@@ -35,7 +35,7 @@ class Tensor {
   /// Underlying data buffer as bytes.
   Uint8List get data {
     final data = cast<Uint8>(tfLiteTensorData(_tensor));
-    return UnmodifiableUint8ListView(
+    return Uint8List.fromList(
         data.asTypedList(tfLiteTensorByteSize(_tensor)));
   }
 
@@ -136,98 +136,9 @@ class Tensor {
         'DataType error: cannot resolve DataType of ${o.runtimeType}');
   }
 
-  void setTo(Object src) {
-    Uint8List bytes = _convertObjectToBytes(src);
-    int size = bytes.length;
-    final ptr = calloc<Uint8>(size);
-    checkState(isNotNull(ptr), message: 'unallocated');
-    final externalTypedData = ptr.asTypedList(size);
-    externalTypedData.setRange(0, bytes.length, bytes);
-    checkState(tfLiteTensorCopyFromBuffer(_tensor, ptr.cast(), bytes.length) ==
-        TfLiteStatus.ok);
-    calloc.free(ptr);
-  }
-
-  Object copyTo(Object dst) {
-    int size = tfLiteTensorByteSize(_tensor);
-    final ptr = calloc<Uint8>(size);
-    checkState(isNotNull(ptr), message: 'unallocated');
-    final externalTypedData = ptr.asTypedList(size);
-    checkState(
-        tfLiteTensorCopyToBuffer(_tensor, ptr.cast(), size) == TfLiteStatus.ok);
-    // Clone the data, because once `free(ptr)`, `externalTypedData` will be
-    // volatile
-    final bytes = externalTypedData.sublist(0);
-    data = bytes;
-    late Object obj;
-    if (dst is Uint8List) {
-      obj = bytes;
-    } else if (dst is ByteBuffer) {
-      ByteData bdata = dst.asByteData();
-      for (int i = 0; i < bdata.lengthInBytes; i++) {
-        bdata.setUint8(i, bytes[i]);
-      }
-      obj = bdata.buffer;
-    } else {
-      obj = _convertBytesToObject(bytes);
-    }
-    calloc.free(ptr);
-    if (obj is List && dst is List) {
-      _duplicateList(obj, dst);
-    } else {
-      dst = obj;
-    }
-    return obj;
-  }
-
-  Uint8List _convertObjectToBytes(Object o) {
-    return ByteConversionUtils.convertObjectToBytes(o, type);
-  }
-
-  Object _convertBytesToObject(Uint8List bytes) {
-    return ByteConversionUtils.convertBytesToObject(bytes, type, shape);
-  }
-
-  void _duplicateList(List obj, List dst) {
-    var objShape = obj.shape;
-    var dstShape = dst.shape;
-    var equal = true;
-    if (objShape.length == dst.shape.length) {
-      for (var i = 0; i < objShape.length; i++) {
-        if (objShape[i] != dstShape[i]) {
-          equal = false;
-          break;
-        }
-      }
-    } else {
-      equal = false;
-    }
-    if (equal == false) {
-      throw ArgumentError(
-          'Output object shape mismatch, interpreter returned output of shape: ${obj.shape} while shape of output provided as argument in run is: ${dst.shape}');
-    }
-    for (var i = 0; i < obj.length; i++) {
-      dst[i] = obj[i];
-    }
-  }
-
-  List<int>? getInputShapeIfDifferent(Object? input) {
-    if (input == null) {
-      return null;
-    }
-    if (input is ByteBuffer || input is Uint8List) {
-      return null;
-    }
-
-    final inputShape = computeShapeOf(input);
-    if (inputShape == shape) {
-      return null;
-    }
-    return inputShape;
-  }
-
   @override
   String toString() {
     return 'Tensor{_tensor: $_tensor, name: $name, type: $type, shape: $shape, data: ${data.length}}';
   }
 }
+
